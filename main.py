@@ -6,9 +6,13 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 from bs4 import BeautifulSoup
 import markdown
+from PyQt5.QtWidgets import QLabel
+from PyQt5.QtWidgets import QLabel, QLineEdit, QCheckBox, QVBoxLayout, QHBoxLayout, QWidget, QMainWindow, QToolBar, QPushButton, QGroupBox, QTextEdit, QSplitter, QApplication
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
-
-from src.pyautogen import Chat  # Import Chat for AI processing
+from src.chatbot import ChatBotWindow
+from src.pyautogen import Chat
+from src.vectorstores.vectorstorcontent import DocumentProcessor  # Import Chat for AI processing
 
 
 class AIWorker(QThread):
@@ -47,7 +51,6 @@ class AIWorker(QThread):
             "think_content": think_content,
             "rest_content": rest_content
         }
-
 
 class Browser(QMainWindow):
     def __init__(self):
@@ -124,12 +127,16 @@ class Browser(QMainWindow):
         self.search_button = QAction(QIcon("search.png"), "Search", self)
         self.search_button.triggered.connect(self.navigate_search)
         self.nav_toolbar.addAction(self.search_button)
+        
+        self.chat_button = QAction(QIcon("chat.png"), "Chat", self)
+        self.chat_button.triggered.connect(self.open_chatbot)
+        self.nav_toolbar.addAction(self.chat_button)
 
         right_layout.addWidget(self.nav_toolbar)
 
         # Configuration Section
         self.config_group = QGroupBox("Configuration")
-        self.config_group.setMaximumHeight(100)  # Reduced height
+        self.config_group.setMaximumHeight(150)  # Reduced height
         self.config_layout = QVBoxLayout(self.config_group)
 
         # Add a checkbox inside the Configuration group box
@@ -140,7 +147,17 @@ class Browser(QMainWindow):
 
         # Add a store checkbox
         self.store_checkbox = QCheckBox("Enable Store")
+        self.store_checkbox.stateChanged.connect(self.on_store_checkbox_changed)  # Connect to method
         self.config_layout.addWidget(self.store_checkbox)
+
+        # Add a text box for the collection name (Initially hidden)
+        self.collection_name_label = QLabel("Collection Name:")
+        self.collection_name_input = QLineEdit()
+        self.collection_name_input.setPlaceholderText("Enter custom collection name")
+        self.collection_name_label.setVisible(False)  # Initially hidden
+        self.collection_name_input.setVisible(False)  # Initially hidden
+        self.config_layout.addWidget(self.collection_name_label)
+        self.config_layout.addWidget(self.collection_name_input)
 
         right_layout.addWidget(self.config_group)
 
@@ -154,6 +171,17 @@ class Browser(QMainWindow):
         right_layout.addWidget(self.config_button)
 
         splitter.addWidget(right_column)
+
+    def on_store_checkbox_changed(self, state):
+        """Handles the state change of the Enable Store checkbox."""
+        if state == Qt.Checked:
+            # Make the collection name input visible
+            self.collection_name_label.setVisible(True)
+            self.collection_name_input.setVisible(True)
+        else:
+            # Hide the collection name input and use default collection name
+            self.collection_name_label.setVisible(False)
+            self.collection_name_input.setVisible(False)
 
     def navigate_home(self):
         if self.enable_search_checkbox.isChecked():
@@ -217,6 +245,28 @@ class Browser(QMainWindow):
         self.think_content_display.setText(processed_content.get("think_content", ""))
         self.text_display.setText(processed_content.get("rest_content", ""))
 
+        # If 'Enable Store' checkbox is checked, call vector_store with rest_content
+        if self.store_checkbox.isChecked():
+            self.vector_store(processed_content.get("rest_content", ""))
+
+    def vector_store(self, rest_content):
+        """Store the rest content."""
+        model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        persist_directory = "./vectordb/"  
+        # Check the collection name input and use default if empty
+        collection_name = self.collection_name_input.text() if self.store_checkbox.isChecked() else 'default'
+        print(f'Storing content to collection {collection_name}')  # You can replace this with actual storing logic
+
+        document_processor = DocumentProcessor(
+            model_name=model_name,
+            persist_directory=persist_directory,
+            collection_name=collection_name
+        )
+        document_processor.process_document(rest_content)
+        
+    def open_chatbot(self):
+        self.chatbot_window = ChatBotWindow()
+        self.chatbot_window.show()
 
 app = QApplication([])
 window = Browser()
