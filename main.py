@@ -1,13 +1,12 @@
-from PyQt5.QtCore import QThread, pyqtSignal
-import sys
-from PyQt5.QtCore import QUrl, Qt
+from PyQt5.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QLineEdit, QToolBar, QAction, QVBoxLayout, QWidget, 
-    QTextEdit, QSplitter, QPushButton, QGroupBox
+    QApplication, QMainWindow, QLineEdit, QToolBar, QAction, QVBoxLayout, QWidget,
+    QTextEdit, QSplitter, QPushButton, QGroupBox, QCheckBox, QHBoxLayout
 )
-from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 from bs4 import BeautifulSoup
 import markdown
+from PyQt5.QtGui import QIcon
 
 from src.pyautogen import Chat  # Import Chat for AI processing
 
@@ -43,9 +42,9 @@ class AIWorker(QThread):
             end_index = text_content.find("</think>")
             think_content = text_content[start_index:end_index]
             rest_content = text_content.replace(f"<think>{think_content}</think>", "")
+        
         return {
             "think_content": think_content,
-            
             "rest_content": rest_content
         }
 
@@ -53,181 +52,173 @@ class AIWorker(QThread):
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("My Browser")
+        self.setWindowIcon(QIcon("deepC.ico"))
+        self.setWindowTitle("DeepC")
         self.setGeometry(100, 100, 1024, 768)
 
-        # Create a central widget and set the layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-
-        # Use QSplitter to create resizable left and right columns
         splitter = QSplitter(Qt.Horizontal)
         central_layout = QVBoxLayout(central_widget)
         central_layout.addWidget(splitter)
 
-        # Left column (Text Display + Expanders)
+        # Left Column (Text Display + Expanders)
         left_column = QWidget()
         left_layout = QVBoxLayout(left_column)
         splitter.addWidget(left_column)
 
-        # Markdown Text Display
         self.text_display = QTextEdit()
         self.text_display.setReadOnly(True)
         self.text_display.setStyleSheet("background-color: #1E1E1E; color: white; padding: 5px;")
         left_layout.addWidget(self.text_display)
 
-        # Summary Expander Section
         self.summary_group = QGroupBox("Summary")
         self.summary_layout = QVBoxLayout(self.summary_group)
-
         self.summary_button = QPushButton("Show Summary")
         self.summary_button.setCheckable(True)
         self.summary_button.clicked.connect(self.toggle_summary)
-
         self.summary_content_display = QTextEdit()
         self.summary_content_display.setReadOnly(True)
-        self.summary_content_display.setVisible(False)  # Initially hidden
-
+        self.summary_content_display.setVisible(False)
         self.summary_layout.addWidget(self.summary_button)
         self.summary_layout.addWidget(self.summary_content_display)
         left_layout.addWidget(self.summary_group)
 
-        # Think Content Expander Section
         self.think_group = QGroupBox("Think Content")
         self.think_layout = QVBoxLayout(self.think_group)
-
         self.think_button = QPushButton("Show Think Content")
         self.think_button.setCheckable(True)
         self.think_button.clicked.connect(self.toggle_think_content)
-
         self.think_content_display = QTextEdit()
         self.think_content_display.setReadOnly(True)
-        self.think_content_display.setVisible(False)  # Initially hidden
-
+        self.think_content_display.setVisible(False)
         self.think_layout.addWidget(self.think_button)
         self.think_layout.addWidget(self.think_content_display)
         left_layout.addWidget(self.think_group)
 
-        # Right column (browser)
+        # Right Column (Browser + Configuration)
         right_column = QWidget()
         right_layout = QVBoxLayout(right_column)
 
-        # Set up the browser
+        # Web Browser
         self.browser = QWebEngineView()
+        self.browser.loadFinished.connect(self.on_page_load_finished)  # Connect to page load finished signal
         right_layout.addWidget(self.browser)
 
-        # Navigation bar
-        navtb = QToolBar("Navigation")
-        right_layout.addWidget(navtb)
+        # Navigation Buttons (Back, Forward, Home, Search)
+        self.nav_toolbar = QToolBar("Navigation")
+        self.nav_toolbar.setStyleSheet("QToolButton { padding: 5px; border-radius: 5px; color: white; }"
+                                      "QToolButton:hover { background-color: #45a049; }")
+        self.back_button = QAction(QIcon("back.png"), "Back", self)
+        self.back_button.triggered.connect(self.browser.back)
+        self.nav_toolbar.addAction(self.back_button)
 
-        # Back button
-        back_btn = QAction("Back", self)
-        back_btn.triggered.connect(self.browser.back)
-        navtb.addAction(back_btn)
+        self.forward_button = QAction(QIcon("forward.png"), "Forward", self)
+        self.forward_button.triggered.connect(self.browser.forward)
+        self.nav_toolbar.addAction(self.forward_button)
 
-        # Forward button
-        forward_btn = QAction("Forward", self)
-        forward_btn.triggered.connect(self.browser.forward)
-        navtb.addAction(forward_btn)
+        self.home_button = QAction(QIcon("home.png"), "Home", self)
+        self.home_button.triggered.connect(self.navigate_home)
+        self.nav_toolbar.addAction(self.home_button)
 
-        # Reload button
-        reload_btn = QAction("Reload", self)
-        reload_btn.triggered.connect(self.browser.reload)
-        navtb.addAction(reload_btn)
+        self.search_button = QAction(QIcon("search.png"), "Search", self)
+        self.search_button.triggered.connect(self.navigate_search)
+        self.nav_toolbar.addAction(self.search_button)
 
-        # Home button
-        home_btn = QAction("Home", self)
-        home_btn.triggered.connect(self.navigate_home)
-        navtb.addAction(home_btn)
+        right_layout.addWidget(self.nav_toolbar)
 
-        # URL bar
-        self.urlbar = QLineEdit()
-        self.urlbar.returnPressed.connect(self.navigate_to_url)
-        navtb.addWidget(self.urlbar)
+        # Configuration Section
+        self.config_group = QGroupBox("Configuration")
+        self.config_group.setMaximumHeight(100)  # Reduced height
+        self.config_layout = QVBoxLayout(self.config_group)
 
-        # Stop button
-        stop_btn = QAction("Stop", self)
-        stop_btn.triggered.connect(self.browser.stop)
-        navtb.addAction(stop_btn)
+        # Add a checkbox inside the Configuration group box
+        self.enable_search_checkbox = QCheckBox("Enable Search")
+        self.enable_search_checkbox.setChecked(True)  # Set to true by default
+        self.enable_search_checkbox.stateChanged.connect(self.toggle_browser_visibility)
+        self.config_layout.addWidget(self.enable_search_checkbox)
 
-        # Add the right column to the splitter
-        splitter.addWidget(right_column)
+        # Add a store checkbox
+        self.store_checkbox = QCheckBox("Enable Store")
+        self.config_layout.addWidget(self.store_checkbox)
 
-        # Set home page
+        right_layout.addWidget(self.config_group)
+
+        # Now it's safe to call navigate_home()
         self.navigate_home()
 
-        # Update URL bar when the page changes
-        self.browser.urlChanged.connect(self.update_urlbar)
+        # Show/Hide Configuration Button at Bottom
+        self.config_button = QPushButton("Show Configuration")
+        self.config_button.setCheckable(True)
+        self.config_button.clicked.connect(self.toggle_configuration)
+        right_layout.addWidget(self.config_button)
 
-        # Connect the loadFinished signal to extract text
-        self.browser.loadFinished.connect(self.extract_text)
+        splitter.addWidget(right_column)
 
     def navigate_home(self):
-        self.browser.setUrl(QUrl("http://www.google.com"))
-
-    def navigate_to_url(self):
-        q = QUrl(self.urlbar.text())
-        if q.scheme() == "":
-            q.setScheme("http")
-        self.browser.setUrl(q)
-
-    def update_urlbar(self, q):
-        self.urlbar.setText(q.toString())
-        self.urlbar.setCursorPosition(0)
-
-    def extract_text(self):
-        """Extract and display text using BeautifulSoup after page load."""
-        self.browser.page().toHtml(self.process_html)
-
-    def process_html(self, html):
-        """Parse HTML with BeautifulSoup and start AI processing in a separate thread."""
-        soup = BeautifulSoup(html, "html.parser")
-        text_content = soup.get_text(separator="\n", strip=True)  # Extract readable text
-        
-        # Start AI processing in a separate thread
-        self.worker = AIWorker(text_content)
-        self.worker.finished.connect(self.display_content)
-        self.worker.start()
-
-    def display_content(self, processed_content):
-        """Displays content where Think and Summary content are expandable, and the rest is in markdown."""
-        # Convert rest of the content to markdown
-        markdown_content = markdown.markdown(processed_content["rest_content"])  # Converts rest content to HTML
-
-        # Update the markdown display
-        self.text_display.setHtml(markdown_content)
-
-        # Update the Summary content display
-        if processed_content["rest_content"]:
-            self.summary_content_display.setPlainText(processed_content["rest_content"])
-            self.summary_group.setVisible(True)
+        if self.enable_search_checkbox.isChecked():
+            self.browser.setUrl(QUrl("http://www.google.com"))
+            self.browser.setVisible(True)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
         else:
-            self.summary_group.setVisible(False)
-        
+            self.browser.setVisible(False)
+            self.nav_toolbar.setVisible(False)  # Hide navigation toolbar
 
-        # Update the Think content display
-        if processed_content["think_content"]:
-            self.think_content_display.setPlainText(processed_content["think_content"])
-            self.think_group.setVisible(True)
+    def navigate_search(self):
+        if self.enable_search_checkbox.isChecked():
+            self.browser.setUrl(QUrl("http://www.google.com"))
+            self.browser.setVisible(True)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+
+    def toggle_browser_visibility(self):
+        if self.enable_search_checkbox.isChecked():
+            self.browser.setVisible(True)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+            self.navigate_home()
         else:
-            self.think_group.setVisible(False)
+            self.browser.setVisible(False)
+            self.nav_toolbar.setVisible(False)  # Hide navigation toolbar
 
-    # def toggle_summary(self):
-    #     """Toggles visibility of the summary content display."""
-    #     self.summary_content_display.setVisible(self.summary_button.isChecked())
+    def toggle_configuration(self):
+        is_visible = self.config_button.isChecked()
+        self.config_group.setVisible(is_visible)
+        self.config_button.setText("Hide Configuration" if is_visible else "Show Configuration")
+
     def toggle_summary(self):
-        """Toggles visibility of the summary content display."""
         is_visible = self.summary_button.isChecked()
         self.summary_content_display.setVisible(is_visible)
         self.summary_button.setText("Hide Summary" if is_visible else "Show Summary")
 
-
     def toggle_think_content(self):
-        """Toggles visibility of the think content display."""
-        self.think_content_display.setVisible(self.think_button.isChecked())
+        is_visible = self.think_button.isChecked()
+        self.think_content_display.setVisible(is_visible)
+        self.think_button.setText("Hide Think Content" if is_visible else "Show Think Content")
+
+    def on_page_load_finished(self):
+        """Callback when a web page has finished loading."""
+        self.browser.page().toHtml(self.handle_html_content)
+
+    def handle_html_content(self, html_content):
+        """Handles the HTML content of the page."""
+        soup = BeautifulSoup(html_content, "html.parser")
+        page_text = soup.get_text()  # Extracts the text content from the page
+
+        # Start the AI processing
+        self.start_ai_processing(page_text)
+
+    def start_ai_processing(self, text_content):
+        """Starts the AI worker to process the content."""
+        self.ai_worker = AIWorker(text_content)
+        self.ai_worker.finished.connect(self.update_ui_with_processed_content)
+        self.ai_worker.start()
+
+    def update_ui_with_processed_content(self, processed_content):
+        """Updates the UI with the AI-processed content."""
+        self.think_content_display.setText(processed_content.get("think_content", ""))
+        self.text_display.setText(processed_content.get("rest_content", ""))
 
 
-app = QApplication(sys.argv)
+app = QApplication([])
 window = Browser()
 window.show()
-sys.exit(app.exec_())
+app.exec_()
