@@ -5,3 +5,6 @@ chromadb
 langchain-community
 langchain_huggingface
 ag2[retrievechat]
+langchain_ollama
+browser-use
+playwright
