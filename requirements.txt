@@ -8,3 +8,5 @@ ag2[retrievechat]
 langchain_ollama
 browser-use
 playwright
+streamlit 
+youtube-transcript-api

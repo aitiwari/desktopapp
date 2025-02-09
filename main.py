@@ -12,8 +12,11 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 from src.chatbot import ChatBotWindow
 from src.pyautogen import Chat
-from src.vectorstores.vectorstorcontent import DocumentProcessor  # Import Chat for AI processing
+from src.vectorstores.vectorstorcontent import DocumentProcessor
+from src.youtube.processing import YTWorker  # Import Chat for AI processing
 
+DEFAULT_GOOGLE_URL = 'https://www.google.com/'
+DEFAULT_YOUTUBE_URL = 'https://www.youtube.com/'
 
 class AIWorker(QThread):
     """Worker thread to process AI-generated text asynchronously."""
@@ -128,6 +131,14 @@ class Browser(QMainWindow):
         self.search_button.triggered.connect(self.navigate_search)
         self.nav_toolbar.addAction(self.search_button)
         
+        self.browser.setUrl(QUrl(DEFAULT_GOOGLE_URL))
+        
+        self.url_bar = QLineEdit()
+        self.url_bar.returnPressed.connect(self.load_url)
+        self.browser.urlChanged.connect(self.update_url_bar)
+        self.nav_toolbar.addWidget(self.url_bar)
+        
+        
         self.chat_button = QAction(QIcon("chat.png"), "Chat", self)
         self.chat_button.triggered.connect(self.open_chatbot)
         self.nav_toolbar.addAction(self.chat_button)
@@ -144,6 +155,12 @@ class Browser(QMainWindow):
         self.enable_search_checkbox.setChecked(True)  # Set to true by default
         self.enable_search_checkbox.stateChanged.connect(self.toggle_browser_visibility)
         self.config_layout.addWidget(self.enable_search_checkbox)
+        
+         # Add a checkbox inside the Configuration group box
+        self.enable_yt_summarize_checkbox = QCheckBox("Youtube Summarize")
+        self.enable_yt_summarize_checkbox.setChecked(False)  # Set to False by default
+        self.enable_yt_summarize_checkbox.stateChanged.connect(self.toggle_browser_visibility)
+        self.config_layout.addWidget(self.enable_yt_summarize_checkbox)
 
         # Add a store checkbox
         self.store_checkbox = QCheckBox("Enable Store")
@@ -171,6 +188,21 @@ class Browser(QMainWindow):
         right_layout.addWidget(self.config_button)
 
         splitter.addWidget(right_column)
+    
+    def load_url(self):
+        url = self.url_bar.text()
+        if not url.startswith('http'):
+            url = 'https://' + url
+        self.browser.setUrl(QUrl(url))
+        
+    def update_url_bar(self, url):
+        self.url_bar.setText(url.toString())
+        if url.toString() != DEFAULT_YOUTUBE_URL and 'search_query=' not in url.toString():
+            print("You are watching youtube")
+            self.ai_worker = YTWorker(url.toString())
+            self.ai_worker.finished.connect(self.update_ui_with_processed_content_yt)
+            self.ai_worker.start()
+            
 
     def on_store_checkbox_changed(self, state):
         """Handles the state change of the Enable Store checkbox."""
@@ -185,28 +217,53 @@ class Browser(QMainWindow):
 
     def navigate_home(self):
         if self.enable_search_checkbox.isChecked():
-            self.browser.setUrl(QUrl("http://www.google.com"))
+            self.browser.setUrl(QUrl(DEFAULT_GOOGLE_URL))
             self.browser.setVisible(True)
             self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+            
+        elif self.enable_yt_summarize_checkbox.isChecked():
+            self.browser.setUrl(QUrl(DEFAULT_YOUTUBE_URL))
+            self.browser.setVisible(True)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+            
         else:
             self.browser.setVisible(False)
             self.nav_toolbar.setVisible(False)  # Hide navigation toolbar
 
     def navigate_search(self):
         if self.enable_search_checkbox.isChecked():
-            self.browser.setUrl(QUrl("http://www.google.com"))
+            self.browser.setUrl(QUrl(DEFAULT_GOOGLE_URL))
+            self.browser.setVisible(True)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+        elif self.enable_yt_summarize_checkbox.isChecked():
+            self.browser.setUrl(QUrl(DEFAULT_GOOGLE_URL))
             self.browser.setVisible(True)
             self.nav_toolbar.setVisible(True)  # Show navigation toolbar
 
+    # def toggle_browser_visibility(self):
+    #     if self.enable_search_checkbox.isChecked():
+    #         self.browser.setVisible(True)
+    #         self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+    #         self.navigate_home()
+    #     else:
+    #         self.browser.setVisible(False)
+    #         self.nav_toolbar.setVisible(False)  # Hide navigation toolbar
     def toggle_browser_visibility(self):
-        if self.enable_search_checkbox.isChecked():
+        """Show or hide the browser based on checkbox states."""
+        if self.enable_yt_summarize_checkbox.isChecked():
+            self.browser.setUrl(QUrl(DEFAULT_YOUTUBE_URL))
+            self.browser.setVisible(True)
+            self.enable_search_checkbox.setChecked(False)
+            self.nav_toolbar.setVisible(True)  # Show navigation toolbar
+        elif self.enable_search_checkbox.isChecked():
+            self.browser.setUrl(QUrl(DEFAULT_GOOGLE_URL))
             self.browser.setVisible(True)
             self.nav_toolbar.setVisible(True)  # Show navigation toolbar
-            self.navigate_home()
         else:
             self.browser.setVisible(False)
             self.nav_toolbar.setVisible(False)  # Hide navigation toolbar
 
+ 
     def toggle_configuration(self):
         is_visible = self.config_button.isChecked()
         self.config_group.setVisible(is_visible)
@@ -224,17 +281,33 @@ class Browser(QMainWindow):
 
     def on_page_load_finished(self):
         """Callback when a web page has finished loading."""
-        self.browser.page().toHtml(self.handle_html_content)
+        # self.browser.page().toHtml(self.handle_html_content)
+        # def on_page_load_finished(self):
+        # """Callback when a web page has finished loading."""
+        current_url = self.browser.url().toString()
+        print(f"Page Loaded: {current_url}")  # Print the loaded URL
+        self.browser.page().toHtml(self.handle_html_content)  # Process page content
+
 
     def handle_html_content(self, html_content):
         """Handles the HTML content of the page."""
-        soup = BeautifulSoup(html_content, "html.parser")
-        page_text = soup.get_text()  # Extracts the text content from the page
-
-        # Start the AI processing
-        self.start_ai_processing(page_text)
+        if not self.enable_yt_summarize_checkbox.isChecked():
+            if self.browser.url().toString() != DEFAULT_GOOGLE_URL:
+                soup = BeautifulSoup(html_content, "html.parser")
+                page_text = soup.get_text()  # Extracts the text content from the page
+                # Start the AI processing
+                self.start_ai_processing(page_text)
+        else:
+            if self.browser.url().toString() != DEFAULT_YOUTUBE_URL and 'search_query=' not in self.browser.url().toString():
+                print(self.browser.url().toString())
 
     def start_ai_processing(self, text_content):
+        """Starts the AI worker to process the content."""
+        self.ai_worker = AIWorker(text_content)
+        self.ai_worker.finished.connect(self.update_ui_with_processed_content)
+        self.ai_worker.start()
+        
+    def start_yt_processing(self, text_content):
         """Starts the AI worker to process the content."""
         self.ai_worker = AIWorker(text_content)
         self.ai_worker.finished.connect(self.update_ui_with_processed_content)
@@ -248,6 +321,17 @@ class Browser(QMainWindow):
         # If 'Enable Store' checkbox is checked, call vector_store with rest_content
         if self.store_checkbox.isChecked():
             self.vector_store(processed_content.get("rest_content", ""))
+            
+            
+    def update_ui_with_processed_content_yt(self, processed_content):
+        """Updates the UI with the AI-processed content."""
+        self.think_content_display.setText(processed_content.get("think_content", ""))
+        self.text_display.setText(processed_content.get("rest_content", ""))
+
+        # If 'Enable Store' checkbox is checked, call vector_store with rest_content
+        if self.store_checkbox.isChecked():
+            self.vector_store(processed_content.get("rest_content", ""))
+            
 
     def vector_store(self, rest_content):
         """Store the rest content."""
