@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QIcon
 import chromadb
 
+from src.rag.contentrag import rag_chat_content
+
 class ChatBotWindow(QDialog):
     def __init__(self):
         super().__init__()
@@ -14,7 +16,7 @@ class ChatBotWindow(QDialog):
         collection_names = self.list_all_collections(persistence_path)
 
         self.setWindowIcon(QIcon("chat.png"))  # Ensure chat.png exists
-        self.setWindowTitle("DeepC - Chatbot")
+        self.setWindowTitle("startstruck - Chatbot")
         self.setGeometry(200, 200, 400, 500)
 
         layout = QVBoxLayout()
@@ -48,18 +50,24 @@ class ChatBotWindow(QDialog):
         selected_collection = self.collection_dropdown.currentText()
 
         if message:
-            self.chat_display.append(f"<b>You:</b> {message}")
+            self.chat_display.append(f"<b>You🧑‍💻:</b> {message}")
             # self.chat_display.append(f"<i>Selected Collection:</i> {selected_collection}")
             self.chat_input.clear()
+            
+            collection_name =  selected_collection
+            input_message = message
+            response = rag_chat_content(input_message,collection_name)
 
             # Simulated bot response (Replace with actual AI response logic)
-            self.chat_display.append("<b>Bot:</b> I'm here to help!")
+            self.chat_display.append(f"<b>Bot🤖:</b> {response}")
+            self.chat_display.append("---")
 
     def list_all_collections(self, persistence_path):
         client = chromadb.PersistentClient(path=persistence_path)
 
         # List all collections in the Chroma DB
-        collection_names = client.list_collections()
+        collections = client.list_collections()
+        collection_names = [collection.name for collection in collections]
         return collection_names
 
 

@@ -4,3 +4,4 @@ langchain
 chromadb
 langchain-community
 langchain_huggingface
+ag2[retrievechat]

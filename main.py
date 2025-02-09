@@ -55,8 +55,8 @@ class AIWorker(QThread):
 class Browser(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowIcon(QIcon("deepC.ico"))
-        self.setWindowTitle("DeepC")
+        self.setWindowIcon(QIcon("starstruck.png"))
+        self.setWindowTitle("starstruck")
         self.setGeometry(100, 100, 1024, 768)
 
         central_widget = QWidget()

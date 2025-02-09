@@ -1,5 +1,5 @@
 from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings  # Corrected import
+from langchain.embeddings import HuggingFaceEmbeddings  
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 
